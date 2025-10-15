@@ -1,5 +1,5 @@
 name: astrbot-plugin-countdown # 这是你的插件的唯一识别名。
-desc: 这是一个可以记录并实现bot倒数日功能的插件 # 插件简短描述
-version: v0.1 # 插件版本号。格式：v1.1.1 或者 v1.1
+desc: 倒数日插件 - 记录和管理重要日子的倒计时 # 插件简短描述
+version: v0.0.1 # 插件版本号。格式：v1.1.1 或者 v1.1
 author: Kihana2077 # 作者
 repo: https://github.com/kihana2077/astrbot-plugin-countdown # 插件的仓库地址

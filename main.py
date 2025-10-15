@@ -1,13 +1,12 @@
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-from astrbot.api.message_components import Plain, Image
 import sqlite3
 import os
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
-@register("countdown", "Kihana2077", "倒数日插件 - 记录和管理重要日子的倒计时", "0.1", "https://github.com/kihana2077/astrbot-plugin-countdown")
+@register("countdown", "Kihana2077", "倒数日插件", "0.1", "https://github.com/kihana2077/astrbot-plugin-countdown")
 class CountdownPlugin(Star):
     def __init__(self, context: Context, config: Dict):
         super().__init__(context)
@@ -28,14 +27,8 @@ class CountdownPlugin(Star):
                         target_date TEXT NOT NULL,
                         created_date TEXT NOT NULL,
                         remark TEXT DEFAULT '',
-                        user_id TEXT NOT NULL,
-                        chat_id TEXT DEFAULT '',
-                        UNIQUE(user_id, name)
+                        user_id TEXT NOT NULL
                     )
-                """)
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS idx_user_date 
-                    ON countdowns(user_id, target_date)
                 """)
                 conn.commit()
             logger.info("数据库初始化成功")
@@ -80,7 +73,7 @@ class CountdownPlugin(Star):
             # 验证日期格式
             datetime.strptime(target_date, "%Y-%m-%d")
             
-            max_count = self.config.get("features", {}).get("max_countdowns", 50)
+            max_count = self.config.get("features", {}).get("max_countdowns_per_user", 20)
             current_count = len(self.get_user_countdowns(user_id))
             
             if current_count >= max_count:
@@ -89,7 +82,7 @@ class CountdownPlugin(Star):
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "INSERT OR REPLACE INTO countdowns (name, target_date, created_date, remark, user_id) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO countdowns (name, target_date, created_date, remark, user_id) VALUES (?, ?, ?, ?, ?)",
                     (name, target_date, datetime.now().strftime("%Y-%m-%d"), remark, user_id)
                 )
                 conn.commit()
@@ -116,13 +109,13 @@ class CountdownPlugin(Star):
             return False
 
     # 主要命令处理函数
-    @filter.command("addcountdown", alias={"添加倒数日", "addcd"})
+    @filter.command("addcountdown")
     async def add_countdown_command(self, event: AstrMessageEvent, name: str, target_date: str, remark: str = ""):
         '''添加倒数日 - 用法: /addcountdown 名称 日期 [备注]'''
         user_id = event.get_sender_id()
         
         # 检查群聊使用权限
-        if event.get_group_id() and not self.config.get("features", {}).get("allow_group_usage", True):
+        if event.get_group_id() and not self.config.get("permissions", {}).get("allow_group", True):
             yield event.plain_result("群聊中暂不支持使用倒数日功能")
             return
         
@@ -134,7 +127,7 @@ class CountdownPlugin(Star):
         else:
             yield event.plain_result(f"❌ {message}")
     
-    @filter.command("listcountdown", alias={"倒数日列表", "listcd"})
+    @filter.command("listcountdown")
     async def list_countdown_command(self, event: AstrMessageEvent):
         '''列出所有倒数日'''
         user_id = event.get_sender_id()
@@ -160,10 +153,16 @@ class CountdownPlugin(Star):
         else:
             yield event.plain_result(response)
     
-    @filter.command("deletecountdown", alias={"删除倒数日", "delcd"})
+    @filter.command("deletecountdown")
     async def delete_countdown_command(self, event: AstrMessageEvent, countdown_id: int):
         '''删除倒数日 - 用法: /deletecountdown ID'''
         user_id = event.get_sender_id()
+        
+        # 检查管理员权限
+        if self.config.get("permissions", {}).get("admin_only_delete", False):
+            if not event.is_admin():
+                yield event.plain_result("❌ 只有管理员可以删除倒数日")
+                return
         
         success = self.delete_countdown(user_id, countdown_id)
         if success:
@@ -171,60 +170,30 @@ class CountdownPlugin(Star):
         else:
             yield event.plain_result("❌ 删除失败，请检查ID是否正确")
     
-    @filter.command("countdownhelp", alias={"倒数日帮助", "cdhelp"})
+    @filter.command("countdownhelp")
     async def help_command(self, event: AstrMessageEvent):
         '''显示倒数日插件帮助信息'''
         help_text = """
 📅 倒数日插件使用说明:
 
 **基本命令:**
-/addcountdown 名称 日期 [备注] - 添加倒数日
+/addcountdown <名称> <日期YYYY-MM-DD> [备注] - 添加倒数日
 /listcountdown - 显示所有倒数日  
-/deletecountdown ID - 删除指定倒数日
+/deletecountdown <ID> - 删除指定倒数日
 /countdownhelp - 显示帮助信息
 
 **示例:**
-/addcountdown 生日 2025-12-31 我的生日
-/addcountdown 考试 2024-06-15
+/addcountdown 生日 2025-12-31
+/addcountdown 考试 2024-06-15 重要考试
 /listcountdown
 /deletecountdown 1
 
 **说明:**
 - 日期格式: YYYY-MM-DD (如: 2024-12-31)
 - 每个用户最多可添加 {} 个倒数日
-- 支持添加备注信息
-        """.format(self.config.get("features", {}).get("max_countdowns", 50))
+        """.format(self.config.get("features", {}).get("max_countdowns_per_user", 20))
         
         yield event.plain_result(help_text)
-    
-    # 自然语言处理支持
-    @filter.event_message_type(filter.EventMessageType.ALL)
-    async def handle_natural_language(self, event: AstrMessageEvent):
-        '''处理自然语言查询'''
-        text = event.message_str.lower().strip()
-        
-        # 忽略命令消息
-        if text.startswith('/'):
-            return
-        
-        # 自然语言模式匹配
-        if any(keyword in text for keyword in ['倒数日', '倒计时', '还有几天', '距离']):
-            user_id = event.get_sender_id()
-            countdowns = self.get_user_countdowns(user_id)
-            
-            if not countdowns:
-                yield event.plain_result("您还没有添加任何倒数日哦~ 使用 /addcountdown 来添加吧！")
-                return
-            
-            # 找到最近的倒数日
-            upcoming = [cd for cd in countdowns if cd['days_left'] >= 0]
-            if upcoming:
-                nearest = min(upcoming, key=lambda x: x['days_left'])
-                yield event.plain_result(f"📅 最近的倒数日: {nearest['name']} - 还有{nearest['days_left']}天")
-            else:
-                # 所有倒数日都已过期
-                latest = max(countdowns, key=lambda x: x['days_left'])
-                yield event.plain_result(f"⏰ 最近的倒数日 {latest['name']} 已过期 {-latest['days_left']} 天")
     
     async def terminate(self):
         '''插件卸载时调用'''

@@ -1,37 +1,33 @@
 {
-  "admin_only": {
-    "type": "boolean",
-    "default": false,
-    "description": "是否只允许管理员添加/删除倒数日"
-  },
   "max_countdowns": {
-    "type": "integer",
-    "default": 50,
-    "minimum": 1,
-    "maximum": 1000,
-    "description": "每个用户最大倒数日数量限制"
+    "description": "单个用户/群组最大倒数日数量",
+    "type": "int",
+    "default": 10,
+    "hint": "限制每个用户或群组可以创建的倒数日数量，防止滥用"
   },
-  "enable_reminders": {
-    "type": "boolean",
+  "allow_private": {
+    "description": "允许私聊使用",
+    "type": "bool",
     "default": true,
-    "description": "是否启用倒数日提醒功能"
+    "hint": "是否允许用户在私聊中创建和管理倒数日"
   },
-  "reminder_days": {
-    "type": "array",
-    "items": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 365
-    },
-    "default": [7, 3, 1],
-    "description": "在倒数日剩余这些天数时发送提醒"
+  "allow_group": {
+    "description": "允许群聊使用",
+    "type": "bool", 
+    "default": true,
+    "hint": "是否允许用户在群聊中创建和管理倒数日"
   },
-  "reminder_message": {
+  "default_remind_days": {
+    "description": "默认提前提醒天数",
+    "type": "int",
+    "default": 1,
+    "hint": "设置默认提前多少天开始提醒倒数日"
+  },
+  "date_format": {
+    "description": "日期显示格式",
     "type": "string",
-    "default": "📢 提醒：距离「{name}」还有 {days} 天！",
-    "description": "提醒消息模板，支持 {name}, {days}, {date} 占位符"
+    "default": "YYYY年MM月DD日",
+    "options": ["YYYY年MM月DD日", "YYYY-MM-DD", "MM/DD/YYYY"],
+    "hint": "选择日期的显示格式"
   }
 }
-
-
-

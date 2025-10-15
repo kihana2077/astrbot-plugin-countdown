@@ -1,491 +1,333 @@
-from astrbot.api.event import filter, AstrMessageEvent
+import os
+import json
+import aiofiles
+import asyncio
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
+
+from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-import astrbot.api.message_components as Comp
-import json
-import os
-import re
-from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
-import asyncio
+from astrbot.api import AstrBotConfig
 
-@register("countdown", "Kihana2077", "智能倒数日管理插件", "0.0.1", "https://github.com/your-repo")
+
+@register("countdown", "开发者", "倒数日管理插件", "1.0.0", "https://github.com/your-repo")
 class CountdownPlugin(Star):
-    def __init__(self, context: Context, config: Dict):
+    def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         self.config = config
-        self.data_file = self.get_data_file_path(context)
-        self.countdowns = {}  # 内存中存储数据
-        self.load_data()
-        logger.info("倒数日插件已初始化")
         
-        # 启动定时提醒任务
-        asyncio.create_task(self.reminder_task())
-
-    def get_data_file_path(self, context: Context) -> str:
-        """获取数据文件路径"""
+        # 确保数据目录存在 - 正确的路径结构
+        # data/plugin_data/astrbot_plugin_countdown/countdown_data.json
+        self.data_dir = os.path.join("data", "plugin_data", "astrbot_plugin_countdown")
+        os.makedirs(self.data_dir, exist_ok=True)
+        self.data_file = os.path.join(self.data_dir, "countdown_data.json")
+        
+        # 创建初始数据文件（如果不存在）
+        asyncio.create_task(self._initialize_data_file())
+        
+    async def _initialize_data_file(self):
+        """初始化数据文件"""
         try:
-            # 尝试不同的方法获取数据目录
-            if hasattr(context, 'get_data_dir'):
-                data_dir = context.get_data_dir()
-            elif hasattr(context, 'data_dir'):
-                data_dir = context.data_dir
-            elif hasattr(context, 'get_plugin_data_dir'):
-                data_dir = context.get_plugin_data_dir()
-            else:
-                # 如果以上方法都不可用，使用默认路径
-                data_dir = os.path.join(os.path.dirname(__file__), "data")
-            
-            os.makedirs(data_dir, exist_ok=True)
-            return os.path.join(data_dir, "countdowns.json")
+            if not os.path.exists(self.data_file):
+                await self._save_data({})
+                logger.info("倒数日插件数据文件已创建")
         except Exception as e:
-            logger.error(f"获取数据目录失败: {e}")
-            # 使用当前目录作为备选
-            return "countdowns.json"
+            logger.error(f"初始化数据文件失败: {e}")
 
-    def load_data(self):
-        """从文件加载数据"""
+    async def _load_data(self) -> Dict[str, Any]:
+        """加载倒数日数据"""
         try:
-            if os.path.exists(self.data_file):
-                with open(self.data_file, 'r', encoding='utf-8') as f:
-                    self.countdowns = json.load(f)
-                logger.info(f"数据加载成功，共 {sum(len(v) for v in self.countdowns.values())} 条记录")
-            else:
-                self.countdowns = {}
-                logger.info("创建新的数据文件")
+            # 确保文件存在
+            if not os.path.exists(self.data_file):
+                await self._save_data({})
+                
+            async with aiofiles.open(self.data_file, 'r', encoding='utf-8') as f:
+                content = await f.read()
+                return json.loads(content) if content else {}
         except Exception as e:
             logger.error(f"加载数据失败: {e}")
-            self.countdowns = {}
+            return {}
 
-    def save_data(self):
-        """保存数据到文件"""
+    async def _save_data(self, data: Dict[str, Any]) -> bool:
+        """保存倒数日数据"""
         try:
-            with open(self.data_file, 'w', encoding='utf-8') as f:
-                json.dump(self.countdowns, f, ensure_ascii=False, indent=2)
+            async with aiofiles.open(self.data_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(data, ensure_ascii=False, indent=2))
+            return True
         except Exception as e:
             logger.error(f"保存数据失败: {e}")
+            return False
 
-    def get_user_key(self, user_id: str, group_id: str = "") -> str:
-        """生成用户存储键"""
-        return f"{user_id}_{group_id}" if group_id else user_id
-
-    def get_next_id(self, user_key: str) -> int:
-        """获取下一个ID"""
-        if user_key not in self.countdowns:
-            return 1
-        return max([cd['id'] for cd in self.countdowns[user_key]], default=0) + 1
-
-    @filter.command("添加倒数日")
-    async def add_countdown_command(self, event: AstrMessageEvent, name: str, target_date: str, remark: str = ""):
-        '''添加新的倒数日'''
-        # 检查权限
-        if self.config.get("admin_only", False):
-            if not event.is_admin():
-                yield event.plain_result("❌ 只有管理员可以添加倒数日")
-                return
-        
-        user_id = event.get_sender_id()
-        group_id = event.get_group_id() or ""
-        user_key = self.get_user_key(user_id, group_id)
-        
-        # 验证并添加倒数日
-        success, result = await self.add_countdown(user_key, name, target_date, remark)
-        
-        if success:
-            yield event.plain_result(f"✅ 已添加倒数日：{name}")
-            yield event.plain_result(f"📅 目标日期：{target_date}")
-            if remark:
-                yield event.plain_result(f"📝 备注：{remark}")
+    def _get_storage_key(self, event: AstrMessageEvent) -> str:
+        """获取存储键名：群聊用群ID，私聊用用户ID"""
+        if event.get_group_id():
+            return f"group_{event.get_group_id()}"
         else:
-            yield event.plain_result(f"❌ {result}")
+            return f"private_{event.get_sender_id()}"
 
-    @filter.command("倒数日列表")
-    async def list_countdowns_command(self, event: AstrMessageEvent):
-        '''查看我的倒数日列表'''
-        user_id = event.get_sender_id()
-        group_id = event.get_group_id() or ""
-        user_key = self.get_user_key(user_id, group_id)
-        
-        countdowns = self.get_user_countdowns(user_key)
-        
-        if not countdowns:
-            yield event.plain_result("📭 您还没有添加任何倒数日")
-            yield event.plain_result("使用「/添加倒数日 名称 日期」来创建第一个倒数日")
-            return
-        
-        response = "📅 您的倒数日列表：\n\n"
-        for cd in countdowns:
-            status_emoji = "⏳" if cd['days_left'] > 0 else "✅"
-            response += f"{cd['id']}. {status_emoji} {cd['name']}\n"
-            response += f"   日期：{cd['target_date']} | {cd['status']}\n"
-            if cd['remark']:
-                response += f"   备注：{cd['remark']}\n"
-            response += "\n"
-        
-        response += "\n💡 使用「/删除倒数日 ID」来删除指定倒数日"
-        
-        yield event.plain_result(response)
+    def _format_date(self, date_str: str, target_date: datetime) -> str:
+        """根据配置格式化日期"""
+        date_format = self.config.get("date_format", "YYYY年MM月DD日")
+        if date_format == "YYYY-MM-DD":
+            return target_date.strftime("%Y-%m-%d")
+        elif date_format == "MM/DD/YYYY":
+            return target_date.strftime("%m/%d/%Y")
+        else:  # 默认格式
+            return target_date.strftime("%Y年%m月%d日")
 
-    @filter.command("删除倒数日")
-    async def delete_countdown_command(self, event: AstrMessageEvent, countdown_id: int):
-        '''删除指定ID的倒数日'''
-        # 检查权限
-        if self.config.get("admin_only", False):
-            if not event.is_admin():
-                yield event.plain_result("❌ 只有管理员可以删除倒数日")
-                return
-        
-        user_id = event.get_sender_id()
-        group_id = event.get_group_id() or ""
-        user_key = self.get_user_key(user_id, group_id)
-        
-        success = self.delete_countdown(user_key, countdown_id)
-        
-        if success:
-            yield event.plain_result(f"✅ 已删除倒数日 #{countdown_id}")
-        else:
-            yield event.plain_result("❌ 删除失败，请检查ID是否正确或您是否有权限删除")
-
-    @filter.command("最近倒数日")
-    async def recent_countdowns_command(self, event: AstrMessageEvent, days: int = 30):
-        '''查看最近N天内的倒数日'''
-        user_id = event.get_sender_id()
-        group_id = event.get_group_id() or ""
-        user_key = self.get_user_key(user_id, group_id)
-        
-        if days <= 0:
-            yield event.plain_result("❌ 天数必须大于0")
-            return
-        
-        countdowns = self.get_recent_countdowns(user_key, days)
-        
-        if not countdowns:
-            yield event.plain_result(f"📭 最近{days}天内没有倒数日")
-            return
-        
-        response = f"⏰ 最近{days}天内的倒数日：\n\n"
-        for cd in countdowns:
-            emoji = "🎯" if cd['days_left'] > 0 else "🎉"
-            response += f"{emoji} {cd['name']} - {cd['target_date']} ({cd['status']})\n"
-            if cd['remark']:
-                response += f"   📝 {cd['remark']}\n"
-        
-        yield event.plain_result(response)
-
-    @filter.command("倒数日帮助")
-    async def help_command(self, event: AstrMessageEvent):
-        '''显示倒数日插件帮助信息'''
-        help_text = """
-📅 倒数日插件使用指南：
-
-**命令列表：**
-• /添加倒数日 名称 日期(YYYY-MM-DD) [备注]
-• /倒数日列表 - 查看所有倒数日
-• /删除倒数日 ID - 删除指定倒数日
-• /最近倒数日 [天数] - 查看近期倒数日
-
-**自然语言查询：**
-• "距离生日还有几天"
-• "考试是什么时候"
-• "查看我的倒数日"
-
-**示例：**
-• /添加倒数日 生日 2024-12-31
-• 距离期末考试还有几天
-• /删除倒数日 1
-
-💡 提示：日期格式为 YYYY-MM-DD
-        """
-        yield event.plain_result(help_text)
-
-    @filter.event_message_type(filter.EventMessageType.ALL)
-    async def handle_natural_language(self, event: AstrMessageEvent):
-        '''处理自然语言查询'''
-        # 忽略命令消息
-        if event.message_str.startswith('/'):
-            return
-            
-        message = event.message_str.lower().strip()
-        user_id = event.get_sender_id()
-        group_id = event.get_group_id() or ""
-        user_key = self.get_user_key(user_id, group_id)
-        
-        # 匹配各种查询模式
-        patterns = [
-            (r'距离(.+)还有几天', self.handle_days_query),
-            (r'(.+)是什么时候', self.handle_date_query),
-            (r'查看我的倒数日', self.handle_list_query),
-            (r'倒数日帮助', self.handle_help_query),
-        ]
-        
-        for pattern, handler in patterns:
-            match = re.search(pattern, message)
-            if match:
-                # 调用对应的处理函数
-                await handler(event, user_key, match.group(1) if match.lastindex else "")
-                event.stop_event()  # 阻止其他插件处理
-                return
-
-    async def handle_days_query(self, event: AstrMessageEvent, user_key: str, name: str):
-        '''处理"距离XXX还有几天"的查询'''
-        countdown = self.find_countdown_by_name(user_key, name)
-        
-        if countdown:
-            if countdown['days_left'] > 0:
-                response = f"📅 距离「{name}」还有 {countdown['days_left']} 天\n"
-                response += f"🗓️ 日期：{countdown['target_date']}"
-                if countdown['remark']:
-                    response += f"\n📝 备注：{countdown['remark']}"
-                yield event.plain_result(response)
-            else:
-                yield event.plain_result(f"🎉 「{name}」已经过去 {-countdown['days_left']} 天了！")
-        else:
-            yield event.plain_result(f"❓ 没有找到名为「{name}」的倒数日")
-            yield event.plain_result("💡 使用「/添加倒数日 名称 日期」来创建")
-
-    async def handle_date_query(self, event: AstrMessageEvent, user_key: str, name: str):
-        '''处理"XXX是什么时候"的查询'''
-        countdown = self.find_countdown_by_name(user_key, name)
-        
-        if countdown:
-            response = f"📅 「{name}」的日期是：{countdown['target_date']}\n"
-            if countdown['days_left'] > 0:
-                response += f"⏳ 还有 {countdown['days_left']} 天"
-            else:
-                response += f"🎉 已经过去 {-countdown['days_left']} 天了！"
-            if countdown['remark']:
-                response += f"\n📝 备注：{countdown['remark']}"
-            yield event.plain_result(response)
-        else:
-            yield event.plain_result(f"❓ 没有找到名为「{name}」的倒数日")
-            yield event.plain_result("💡 使用「/添加倒数日 名称 日期」来创建")
-
-    async def handle_list_query(self, event: AstrMessageEvent, user_key: str, _=None):
-        '''处理"查看我的倒数日"的查询'''
-        countdowns = self.get_user_countdowns(user_key)
-        
-        if not countdowns:
-            yield event.plain_result("📭 您还没有添加任何倒数日")
-            yield event.plain_result("使用「/添加倒数日 名称 日期」来创建第一个倒数日")
-            return
-        
-        response = "📅 您的倒数日列表：\n\n"
-        for cd in countdowns:
-            status_emoji = "⏳" if cd['days_left'] > 0 else "✅"
-            response += f"{cd['id']}. {status_emoji} {cd['name']}\n"
-            response += f"   日期：{cd['target_date']} | {cd['status']}\n"
-            if cd['remark']:
-                response += f"   备注：{cd['remark']}\n"
-            response += "\n"
-        
-        yield event.plain_result(response)
-
-    async def handle_help_query(self, event: AstrMessageEvent, user_key: str, _=None):
-        '''处理"帮助"的查询'''
-        help_text = """
-📅 倒数日插件使用指南：
-
-**命令列表：**
-• /添加倒数日 名称 日期(YYYY-MM-DD) [备注]
-• /倒数日列表 - 查看所有倒数日
-• /删除倒数日 ID - 删除指定倒数日
-• /最近倒数日 [天数] - 查看近期倒数日
-
-**自然语言查询：**
-• "距离生日还有几天"
-• "考试是什么时候"
-• "查看我的倒数日"
-
-**示例：**
-• /添加倒数日 生日 2024-12-31
-• 距离期末考试还有几天
-• /删除倒数日 1
-
-💡 提示：日期格式为 YYYY-MM-DD
-        """
-        yield event.plain_result(help_text)
-
-    # 数据操作方法
-    async def add_countdown(self, user_key: str, name: str, date_str: str, remark: str = "") -> tuple:
-        """添加倒数日"""
-        try:
-            # 验证日期格式
-            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            today = datetime.now().date()
-            
-            if target_date < today:
-                return False, "目标日期不能是过去的时间"
-            
-            # 检查数量限制
-            max_count = self.config.get("max_countdowns", 50)
-            current_count = len(self.get_user_countdowns(user_key))
-            
-            if current_count >= max_count:
-                return False, f"已达到最大倒数日数量限制({max_count}个)"
-            
-            # 添加到内存
-            if user_key not in self.countdowns:
-                self.countdowns[user_key] = []
-            
-            countdown_id = self.get_next_id(user_key)
-            
-            countdown = {
-                'id': countdown_id,
-                'name': name,
-                'target_date': date_str,
-                'created_date': today.strftime("%Y-%m-%d"),
-                'remark': remark,
-                'notified_days': []
-            }
-            
-            self.countdowns[user_key].append(countdown)
-            self.save_data()  # 保存到文件
-            
-            return True, "添加成功"
-            
-        except ValueError:
-            return False, "日期格式错误，请使用 YYYY-MM-DD 格式"
-        except Exception as e:
-            logger.error(f"添加倒数日失败: {e}")
-            return False, "添加失败，请稍后重试"
-
-    def get_user_countdowns(self, user_key: str) -> List[Dict[str, Any]]:
+    async def _get_countdowns(self, event: AstrMessageEvent) -> List[Dict[str, Any]]:
         """获取用户的倒数日列表"""
-        if user_key not in self.countdowns:
-            return []
-        
-        result = []
-        for cd in self.countdowns[user_key]:
-            target_date = datetime.strptime(cd['target_date'], "%Y-%m-%d").date()
-            today = datetime.now().date()
-            days_diff = (target_date - today).days
-            
-            status = "已过期" if days_diff < 0 else f"剩余{days_diff}天"
-            
-            result.append({
-                'id': cd['id'],
-                'name': cd['name'],
-                'target_date': cd['target_date'],
-                'days_left': days_diff,
-                'remark': cd['remark'],
-                'status': status
-            })
-        
-        # 按日期排序
-        result.sort(key=lambda x: x['target_date'])
-        return result
+        data = await self._load_data()
+        storage_key = self._get_storage_key(event)
+        return data.get(storage_key, [])
 
-    def get_recent_countdowns(self, user_key: str, days: int) -> List[Dict[str, Any]]:
-        """获取最近N天内的倒数日"""
-        all_countdowns = self.get_user_countdowns(user_key)
-        result = []
-        
-        for cd in all_countdowns:
-            if 0 <= cd['days_left'] <= days:
-                result.append(cd)
-        
-        return result
+    async def _save_countdowns(self, event: AstrMessageEvent, countdowns: List[Dict[str, Any]]) -> bool:
+        """保存用户的倒数日列表"""
+        data = await self._load_data()
+        storage_key = self._get_storage_key(event)
+        data[storage_key] = countdowns
+        return await self._save_data(data)
 
-    def find_countdown_by_name(self, user_key: str, name: str) -> Optional[Dict[str, Any]]:
-        """根据名称查找倒数日"""
-        countdowns = self.get_user_countdowns(user_key)
+    def _parse_date(self, date_str: str) -> Optional[datetime]:
+        """解析日期字符串，支持多种格式"""
+        formats = ["%Y-%m-%d", "%Y/%m/%d", "%Y年%m月%d日", "%m月%d日"]  # 最后一种格式自动补全年份
         
-        for cd in countdowns:
-            if name in cd['name']:
-                return cd
-        
+        for fmt in formats:
+            try:
+                if fmt == "%m月%d日":  # 自动补全当前年份
+                    current_year = datetime.now().year
+                    date_str_with_year = f"{current_year}年{date_str}"
+                    return datetime.strptime(date_str_with_year, "%Y年%m月%d日")
+                else:
+                    return datetime.strptime(date_str, fmt)
+            except ValueError:
+                continue
         return None
 
-    def delete_countdown(self, user_key: str, countdown_id: int) -> bool:
-        """删除倒数日"""
-        if user_key not in self.countdowns:
-            return False
+    def _calculate_days_left(self, target_date: datetime) -> int:
+        """计算剩余天数"""
+        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        target_date = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        delta = target_date - today
+        return delta.days
+
+    @filter.command("add_countdown")
+    async def add_countdown(self, event: AstrMessageEvent, name: str, target_date_str: str):
+        """添加倒数日
+        用法: /add_countdown 事件名称 目标日期(YYYY-MM-DD或MM月DD日)
+        示例: /add_countdown 生日 12-25 或 /add_countdown 春节 2025-01-29
+        """
+        # 检查权限
+        if event.get_group_id() and not self.config.get("allow_group", True):
+            yield event.plain_result("群聊中已禁用倒数日功能")
+            return
         
-        # 查找并删除
-        for i, cd in enumerate(self.countdowns[user_key]):
-            if cd['id'] == countdown_id:
-                del self.countdowns[user_key][i]
-                self.save_data()  # 保存到文件
-                return True
+        if not event.get_group_id() and not self.config.get("allow_private", True):
+            yield event.plain_result("私聊中已禁用倒数日功能")
+            return
+
+        # 解析日期
+        target_date = self._parse_date(target_date_str)
+        if not target_date:
+            yield event.plain_result("日期格式错误，请使用 YYYY-MM-DD 或 MM月DD日 格式")
+            return
+
+        # 检查日期是否在过去
+        if self._calculate_days_left(target_date) < 0:
+            yield event.plain_result("目标日期不能是过去的时间")
+            return
+
+        # 获取当前倒数日列表
+        countdowns = await self._get_countdowns(event)
+        max_count = self.config.get("max_countdowns", 10)
         
-        return False
+        if len(countdowns) >= max_count:
+            yield event.plain_result(f"已达到最大倒数日数量限制({max_count}个)")
+            return
 
-    async def reminder_task(self):
-        """定时提醒任务"""
-        while True:
-            try:
-                if self.config.get("enable_reminders", True):
-                    await self.check_reminders()
-                await asyncio.sleep(3600)  # 每小时检查一次
-            except Exception as e:
-                logger.error(f"提醒任务出错: {e}")
-                await asyncio.sleep(300)  # 出错后等待5分钟重试
+        # 检查是否已存在同名事件
+        for cd in countdowns:
+            if cd["name"] == name:
+                yield event.plain_result(f"已存在名为「{name}」的倒数日")
+                return
 
-    async def check_reminders(self):
-        """检查需要发送的提醒"""
-        try:
-            reminder_days = self.config.get("reminder_days", [7, 3, 1])
-            today = datetime.now().date()
-            
-            for user_key, countdown_list in self.countdowns.items():
-                for cd in countdown_list:
-                    target_date = datetime.strptime(cd['target_date'], "%Y-%m-%d").date()
-                    days_left = (target_date - today).days
-                    
-                    if days_left in reminder_days:
-                        notified = cd.get('notified_days', [])
-                        if str(days_left) not in notified:
-                            await self.send_reminder(user_key, cd, days_left)
-                            # 更新已通知天数
-                            cd['notified_days'] = notified + [str(days_left)]
-                            self.save_data()  # 保存到文件
-                            
-        except Exception as e:
-            logger.error(f"检查提醒失败: {e}")
+        # 添加新倒数日
+        new_countdown = {
+            "name": name,
+            "target_date": target_date.strftime("%Y-%m-%d"),
+            "created_date": datetime.now().strftime("%Y-%m-%d"),
+            "remind_days": self.config.get("default_remind_days", 1)
+        }
+        countdowns.append(new_countdown)
 
-    async def send_reminder(self, user_key: str, countdown: Dict, days_left: int):
-        """发送提醒消息"""
-        try:
-            # 解析用户ID和群ID
-            parts = user_key.split('_')
-            if len(parts) == 2:
-                user_id, group_id = parts
-            else:
-                user_id = parts[0]
-                group_id = ""
-            
-            message_template = self.config.get("reminder_message", 
-                "📢 提醒：距离「{name}」还有 {days} 天！")
-            
-            message = message_template.format(
-                name=countdown['name'],
-                days=days_left,
-                date=countdown['target_date']
+        if await self._save_countdowns(event, countdowns):
+            days_left = self._calculate_days_left(target_date)
+            formatted_date = self._format_date(target_date_str, target_date)
+            yield event.plain_result(
+                f"✅ 已添加倒数日「{name}」\n"
+                f"📅 目标日期: {formatted_date}\n"
+                f"⏳ 剩余天数: {days_left}天"
             )
-            
-            # 构建消息链
-            chains = [Comp.Plain(message)]
-            if countdown['remark']:
-                chains.append(Comp.Plain(f"\n📝 {countdown['remark']}"))
-            
-            # 发送消息到用户
-            try:
-                if group_id:
-                    # 如果是群聊，发送到群
-                    await self.ctx.send_message_to_group(group_id, chains)
+        else:
+            yield event.plain_result("添加失败，请稍后重试")
+
+    @filter.command("del_countdown")
+    async def del_countdown(self, event: AstrMessageEvent, name_or_index: str):
+        """删除倒数日
+        用法: /del_countdown 事件名称或序号
+        示例: /del_countdown 生日 或 /del_countdown 1
+        """
+        countdowns = await self._get_countdowns(event)
+        
+        if not countdowns:
+            yield event.plain_result("暂无倒数日记录")
+            return
+
+        # 尝试按序号删除
+        if name_or_index.isdigit():
+            index = int(name_or_index) - 1
+            if 0 <= index < len(countdowns):
+                removed = countdowns.pop(index)
+                if await self._save_countdowns(event, countdowns):
+                    yield event.plain_result(f"✅ 已删除倒数日「{removed['name']}」")
                 else:
-                    # 如果是私聊，发送给用户
-                    await self.ctx.send_message_to_user(user_id, chains)
-            except Exception as e:
-                logger.error(f"发送提醒消息失败: {e}")
+                    yield event.plain_result("删除失败，请稍后重试")
+                return
+
+        # 按名称删除
+        for i, cd in enumerate(countdowns):
+            if cd["name"] == name_or_index:
+                removed = countdowns.pop(i)
+                if await self._save_countdowns(event, countdowns):
+                    yield event.plain_result(f"✅ 已删除倒数日「{removed['name']}」")
+                else:
+                    yield event.plain_result("删除失败，请稍后重试")
+                return
+
+        yield event.plain_result("未找到对应的倒数日")
+
+    @filter.command("list_countdown")
+    async def list_countdown(self, event: AstrMessageEvent):
+        """列出所有倒数日"""
+        countdowns = await self._get_countdowns(event)
+        
+        if not countdowns:
+            yield event.plain_result("暂无倒数日记录")
+            return
+
+        result = "📋 倒数日列表:\n"
+        for i, cd in enumerate(countdowns, 1):
+            target_date = datetime.strptime(cd["target_date"], "%Y-%m-%d")
+            days_left = self._calculate_days_left(target_date)
+            formatted_date = self._format_date(cd["target_date"], target_date)
+            
+            result += f"{i}. {cd['name']} - {formatted_date} (剩余{days_left}天)\n"
+
+        yield event.plain_result(result.strip())
+
+    @filter.command("countdown")
+    async def check_countdown(self, event: AstrMessageEvent, name: str = ""):
+        """查看特定倒数日或所有倒数日
+        用法: /countdown [事件名称]
+        示例: /countdown 或 /countdown 生日
+        """
+        countdowns = await self._get_countdowns(event)
+        
+        if not countdowns:
+            yield event.plain_result("暂无倒数日记录")
+            return
+
+        if name:  # 查看特定倒数日
+            for cd in countdowns:
+                if cd["name"] == name:
+                    target_date = datetime.strptime(cd["target_date"], "%Y-%m-%d")
+                    days_left = self._calculate_days_left(target_date)
+                    formatted_date = self._format_date(cd["target_date"], target_date)
+                    
+                    # 计算进度条
+                    total_days = (target_date - datetime.strptime(cd["created_date"], "%Y-%m-%d")).days
+                    passed_days = total_days - days_left
+                    progress = min(int(passed_days / total_days * 20), 20) if total_days > 0 else 20
+                    progress_bar = "█" * progress + "░" * (20 - progress)
+                    
+                    result = (
+                        f"🎯 事件: {cd['name']}\n"
+                        f"📅 目标日期: {formatted_date}\n"
+                        f"⏳ 剩余天数: {days_left}天\n"
+                        f"📊 进度: [{progress_bar}] {passed_days}/{total_days}天"
+                    )
+                    
+                    if days_left <= cd["remind_days"]:
+                        result += f"\n🔔 即将到来! ({days_left}天后)"
+                    
+                    yield event.plain_result(result)
+                    return
+            
+            yield event.plain_result(f"未找到名为「{name}」的倒数日")
+        
+        else:  # 查看所有倒数日
+            result = "📋 倒数日概览:\n"
+            today = datetime.now()
+            
+            for cd in sorted(countdowns, key=lambda x: x["target_date"]):
+                target_date = datetime.strptime(cd["target_date"], "%Y-%m-%d")
+                days_left = self._calculate_days_left(target_date)
                 
-        except Exception as e:
-            logger.error(f"发送提醒失败: {e}")
+                if days_left >= 0:  # 只显示未来的事件
+                    icon = "🔔" if days_left <= cd["remind_days"] else "⏳"
+                    result += f"{icon} {cd['name']}: 剩余{days_left}天\n"
+            
+            yield event.plain_result(result.strip())
+
+    @filter.command("set_remind")
+    async def set_remind_days(self, event: AstrMessageEvent, name: str, days: int):
+        """设置提前提醒天数
+        用法: /set_remind 事件名称 天数
+        示例: /set_remind 生日 7
+        """
+        if days < 0 or days > 365:
+            yield event.plain_result("提醒天数应在0-365之间")
+            return
+
+        countdowns = await self._get_countdowns(event)
+        
+        for cd in countdowns:
+            if cd["name"] == name:
+                cd["remind_days"] = days
+                if await self._save_countdowns(event, countdowns):
+                    yield event.plain_result(f"✅ 已设置「{name}」提前{days}天提醒")
+                else:
+                    yield event.plain_result("设置失败，请稍后重试")
+                return
+        
+        yield event.plain_result(f"未找到名为「{name}」的倒数日")
+
+    @filter.command("countdown_help")
+    async def show_help(self, event: AstrMessageEvent):
+        """显示帮助信息"""
+        help_text = """
+📅 倒数日插件使用说明：
+
+/add_countdown <事件名称> <日期> - 添加倒数日
+  示例: /add_countdown 生日 12-25
+  示例: /add_countdown 春节 2025-01-29
+
+/del_countdown <名称或序号> - 删除倒数日
+  示例: /del_countdown 生日 或 /del_countdown 1
+
+/list_countdown - 列出所有倒数日
+
+/countdown [事件名称] - 查看倒数日详情
+  示例: /countdown 或 /countdown 生日
+
+/set_remind <事件名称> <天数> - 设置提前提醒天数
+  示例: /set_remind 生日 7
+
+/countdown_help - 显示此帮助信息
+        """
+        yield event.plain_result(help_text.strip())
 
     async def terminate(self):
-        '''插件卸载时调用'''
-        self.save_data()  # 保存数据
+        """插件卸载时调用"""
         logger.info("倒数日插件已卸载")
-
-
-

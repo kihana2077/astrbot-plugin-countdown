@@ -45,14 +45,6 @@
     "default": "📢 提醒：距离「{name}」还有 {days} 天！",
     "description": "提醒消息模板"
   },
-  "date_formats": {
-    "type": "list",
-    "items": {
-      "type": "string"
-    },
-    "default": ["%Y-%m-%d", "%Y/%m/%d", "%Y年%m月%d日"],
-    "description": "支持的日期格式"
-  },
   "error_message": {
     "type": "string",
     "default": "⚠️ 操作失败，请稍后重试。",

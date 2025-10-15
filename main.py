@@ -4,13 +4,11 @@ from astrbot.api import logger
 import astrbot.api.message_components as Comp
 import sqlite3
 import os
-import re
-import json
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 import asyncio
 
-@register("countdown", "Kihana2077", "智能倒数日管理插件", "0.0.1", "https://github.com/your-repo")
+@register("countdown", "your_name", "倒数日管理插件", "1.0.0", "https://github.com/your-repo")
 class CountdownPlugin(Star):
     def __init__(self, context: Context, config: Dict):
         super().__init__(context)
@@ -25,7 +23,7 @@ class CountdownPlugin(Star):
     def init_db(self):
         """初始化数据库"""
         try:
-            with sql极速电竞APP下载ite3.connect(self.db_path) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS countdowns (
@@ -45,8 +43,8 @@ class CountdownPlugin(Star):
             logger.error(f"数据库初始化失败: {e}")
 
     @filter.command("添加倒数日")
-    async def add_countdown_command(self, event: AstrMessageEvent):
-        '''添加新的倒数日 - 格式：添加倒数日 名称 日期(YYYY-MM-DD) [备注]'''
+    async def add_countdown_command(self, event: AstrMessageEvent, name: str, target_date: str, remark: str = ""):
+        '''添加新的倒数日 - 格式：/添加倒数日 名称 日期(YYYY-MM-DD) [备注]'''
         # 检查权限
         if self.config.get("admin_only", False):
             if not event.is_admin():
@@ -65,23 +63,12 @@ class CountdownPlugin(Star):
         
         user_id = event.get_sender_id()
         group_id = event.get_group_id() or ""
-        message = event.message_str.strip()
-        
-        # 解析消息内容
-        parts = message.split()
-        if len(parts) < 3:
-            yield event.plain_result("❌ 格式错误！正确格式：添加倒数日 名称 日期(YYYY-MM-DD) [备注]")
-            return
-        
-        name = parts[1]
-        date_str = parts[2]
-        remark = " ".join(parts[3:]) if len(parts) > 3 else ""
         
         # 验证并添加倒数日
-        success, result = await self.add_countdown(user_id, group_id, name, date_str, remark)
+        success, result = await self.add_countdown(user_id, group_id, name, target_date, remark)
         
         if success:
-            yield event.plain_result(f"✅ 已添加倒数日：{name}\n📅 目标日期：{date_str}")
+            yield event.plain_result(f"✅ 已添加倒数日：{name}\n📅 目标日期：{target_date}")
             if remark:
                 yield event.plain_result(f"📝 备注：{remark}")
         else:
@@ -95,7 +82,7 @@ class CountdownPlugin(Star):
         
         if not countdowns:
             yield event.plain_result("📭 您还没有添加任何倒数日")
-            yield event.plain_result("使用「添加倒数日 名称 日期」来创建第一个倒数日")
+            yield event.plain_result("使用「/添加倒数日 名称 日期」来创建第一个倒数日")
             return
         
         # 构建消息链
@@ -110,12 +97,12 @@ class CountdownPlugin(Star):
                 chains.append(Comp.Plain(f"   备注：{cd['remark']}\n"))
             chains.append(Comp.Plain("\n"))
         
-        chains.append(Comp.Plain(f"\n💡 使用「删除倒数日 ID」来删除指定倒数日"))
+        chains.append(Comp.Plain(f"\n💡 使用「/删除倒数日 ID」来删除指定倒数日"))
         
         yield event.chain_result(chains)
 
     @filter.command("删除倒数日")
-    async def delete_countdown_command(self, event: AstrMessageEvent):
+    async def delete_countdown_command(self, event: AstrMessageEvent, countdown_id: int):
         '''删除指定ID的倒数日'''
         # 检查权限
         if self.config.get("admin_only", False):
@@ -124,19 +111,6 @@ class CountdownPlugin(Star):
                 return
         
         user_id = event.get_sender_id()
-        message = event.message_str.strip()
-        
-        # 解析消息内容
-        parts = message.split()
-        if len(parts) < 2:
-            yield event.plain_result("❌ 格式错误！正确格式：删除倒数日 ID")
-            return
-        
-        try:
-            countdown_id = int(parts[1])
-        except ValueError:
-            yield event.plain_result("❌ ID必须是数字")
-            return
         
         success = self.delete_countdown(user_id, countdown_id)
         
@@ -146,21 +120,13 @@ class CountdownPlugin(Star):
             yield event.plain_result("❌ 删除失败，请检查ID是否正确或您是否有权限删除")
 
     @filter.command("最近倒数日")
-    async def recent_countdowns_command(self, event: AstrMessageEvent):
+    async def recent_countdowns_command(self, event: AstrMessageEvent, days: int = 30):
         '''查看最近N天内的倒数日'''
         user_id = event.get_sender_id()
-        message = event.message_str.strip()
         
-        # 解析消息内容
-        parts = message.split()
-        days = 30  # 默认30天
-        
-        if len(parts) > 1:
-            try:
-                days = int(parts[1])
-            except ValueError:
-                yield event.plain_result("❌ 天数必须是数字")
-                return
+        if days <= 0:
+            yield event.plain_result("❌ 天数必须大于0")
+            return
         
         countdowns = self.get_recent_countdowns(user_id, days)
         
@@ -178,79 +144,24 @@ class CountdownPlugin(Star):
         
         yield event.chain_result(chains)
 
-    @filter.event_message_type(filter.EventMessageType.ALL)
-    async def handle_countdown_query(self, event: AstrMessageEvent):
-        '''处理自然语言查询'''
-        try:
-            message = event.message_str.lower().strip()
-            
-            # 匹配各种查询模式
-            patterns = [
-                (r'距离(.+)还有几天', self.handle_days_query),
-                (r'(.+)是什么时候', self.handle_date_query),
-                (r'倒数日帮助', self.show_help),
-                (r'帮助倒数日', self.show_help),
-            ]
-            
-            for pattern, handler in patterns:
-                match = re.search(pattern, message)
-                if match:
-                    # 直接调用处理函数并传递 event 参数
-                    await handler(event, match.group(1))
-                    event.stop_event()  # 阻止其他插件处理
-                    return
-        except Exception as e:
-            logger.error(f"处理自然语言查询失败: {e}")
-
-    async def handle_days_query(self, event: AstrMessageEvent, name: str):
-        '''处理"距离XXX还有几天"的查询'''
-        user_id = event.get_sender_id()
-        countdown = self.find_countdown_by_name(user_id, name)
-        
-        if countdown:
-            if countdown['days_left'] > 0:
-                yield event.plain_result(f"📅 距离「{name}」还有 {countdown['days_left']} 天")
-                yield event.plain_result(f"🗓️ 日期：{countdown['target_date']}")
-            else:
-                yield event.plain_result(f"🎉 「{name}」已经过去 {-countdown['days_left']} 天了！")
-        else:
-            yield event.plain_result(f"❓ 没有找到名为「{name}」的倒数日")
-            yield event.plain_result("💡 使用「添加倒数日 名称 日期」来创建")
-
-    async def handle_date_query(self, event: AstrMessageEvent, name: str):
-        '''处理"XXX是什么时候"的查询'''
-        user_id = event.get_sender_id()
-        countdown = self.find_countdown_by_name(user_id, name)
-        
-        if countdown:
-            yield event.plain_result(f"📅 「{name}」的日期是：{countdown['target_date']}")
-            if countdown['days_left'] > 0:
-                yield event.plain_result(f"⏳ 还有 {countdown['days_left']} 天")
-            else:
-                yield event.plain_result(f"🎉 已经过去 {-countdown['days_left']} 天了！")
-        else:
-            yield event.plain_result(f"❓ 没有找到名为「{name}」的倒数日")
-
-    async def show_help(self, event: AstrMessageEvent, _=None):
-        '''显示帮助信息'''
+    @filter.command("倒数日帮助")
+    async def help_command(self, event: AstrMessageEvent):
+        '''显示倒数日插件帮助信息'''
         help_text = """
 📅 倒数日插件使用指南：
 
 **命令列表：**
-• 添加倒数日 名称 日期(YYYY-MM-DD) [备注]
-• 倒数日列表 - 查看所有倒数日
-• 删除倒数日 ID - 删除指定倒数日
-• 最近倒数日 [天数] - 查看近期倒数日
-
-**自然语言查询：**
-• "距离生日还有几天"
-• "考试是什么时候"
-• "倒数日帮助"
+• /添加倒数日 名称 日期(YYYY-MM-DD) [备注]
+• /倒数日列表 - 查看所有倒数日
+• /删除倒数日 ID - 删除指定倒数日
+• /最近倒数日 [天数] - 查看近期倒数日（默认30天）
 
 **示例：**
-• 添加倒数日 生日 2024-12-31
-• 距离期末考试还有几天
-• 删除倒数日 1
+• /添加倒数日 生日 2024-12-31
+• /添加倒数日 考试 2024-06-15 重要考试
+• /倒数日列表
+• /删除倒数日 1
+• /最近倒数日 7
 
 💡 提示：日期格式为 YYYY-MM-DD，如：2024-12-31
         """
@@ -322,22 +233,6 @@ class CountdownPlugin(Star):
         except Exception as e:
             logger.error(f"获取最近倒数日失败: {e}")
             return []
-
-    def find_countdown_by_name(self, user_id: str, name: str) -> Optional[Dict[str, Any]]:
-        """根据名称查找倒数日"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT * FROM countdowns WHERE user_id = ? AND name LIKE ?",
-                    (user_id, f"%{name}%")
-                )
-                rows = self._process_countdown_rows(cursor.fetchall())
-                return rows[0] if rows else None
-        except Exception as e:
-            logger.error(f"查找倒数日失败: {e}")
-            return None
 
     def delete_countdown(self, user_id: str, countdown_id: int) -> bool:
         """删除倒数日"""

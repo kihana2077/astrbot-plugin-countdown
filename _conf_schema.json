@@ -1,85 +1,61 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "enabled": {
+    "admin_only": {
+      "type": "boolean",
+      "default": false,
+      "description": "是否只允许管理员使用插件命令"
+    },
+    "max_countdowns": {
+      "type": "integer",
+      "default": 50,
+      "min": 10,
+      "max": 1000,
+      "description": "每个用户最大倒数日数量"
+    },
+    "enable_private_chat": {
       "type": "boolean",
       "default": true,
-      "description": "是否启用倒数日插件"
+      "description": "是否允许在私聊中使用插件"
     },
-    "database": {
-      "type": "object",
-      "properties": {
-        "filename": {
-          "type": "string",
-          "default": "countdown.db",
-          "description": "数据库文件名"
-        },
-        "backup_enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "是否启用自动备份"
-        }
-      },
-      "default": {},
-      "additionalProperties": false
+    "enable_group_chat": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否允许在群聊中使用插件"
     },
-    "commands": {
-      "type": "object",
-      "properties": {
-        "prefix": {
-          "type": "string",
-          "default": "/",
-          "description": "命令前缀"
-        },
-        "aliases": {
-          "type": "object",
-          "properties": {
-            "add": {
-              "type": "array",
-              "items": {"type": "string"},
-              "default": ["addcd", "添加倒数日"],
-              "description": "添加命令的别名"
-            },
-            "list": {
-              "type": "array",
-              "items": {"type": "string"},
-              "default": ["listcd", "倒数日列表"],
-              "description": "列表命令的别名"
-            },
-            "delete": {
-              "type": "array",
-              "items": {"type": "string"},
-              "default": ["delcd", "删除倒数日"],
-              "description": "删除命令的别名"
-            }
-          },
-          "default": {},
-          "additionalProperties": false
-        }
-      },
-      "default": {},
-      "additionalProperties": false
+    "show_operation_log": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否显示操作日志"
     },
-    "features": {
-      "type": "object",
-      "properties": {
-        "max_countdowns": {
-          "type": "integer",
-          "default": 50,
-          "minimum": 10,
-          "description": "每个用户最大倒数日数量"
-        },
-        "allow_group_usage": {
-          "type": "boolean",
-          "default": true,
-          "description": "是否允许群聊使用"
-        }
+    "enable_reminders": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否启用倒数日提醒功能"
+    },
+    "reminder_days": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "min": 0
       },
-      "default": {},
-      "additionalProperties": false
+      "default": [7, 3, 1, 0],
+      "description": "在倒数日前多少天发送提醒"
+    },
+    "reminder_message": {
+      "type": "string",
+      "default": "📢 提醒：距离「{name}」还有 {days} 天！",
+      "description": "提醒消息模板"
+    },
+    "date_formats": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": ["%Y-%m-%d", "%Y/%m/%d", "%Y年%m月%d日"],
+      "description": "支持的日期格式"
+    },
+    "error_message": {
+      "type": "string",
+      "default": "⚠️ 操作失败，请稍后重试。",
+      "description": "错误提示消息"
     }
-  },
-  "additionalProperties": false,
-  "default": {}
 }

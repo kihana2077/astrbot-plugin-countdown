@@ -1,4 +1,5 @@
 ### 这是一个astrbot倒数日插件  
+人麻了，还没有开发好
 由deepseek参与开发   
 倒数日插件使用说明:  
 /addcountdown <名称> <日期YYYY-MM-DD> [备注] - 添加倒数日

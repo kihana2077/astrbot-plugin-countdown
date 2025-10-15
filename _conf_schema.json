@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否启用倒数日插件"
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "default": "countdown.db",
+          "description": "数据库文件名"
+        },
+        "backup_enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否启用自动备份"
+        }
+      },
+      "default": {},
+      "additionalProperties": false
+    },
+    "commands": {
+      "type": "object",
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "default": "/",
+          "description": "命令前缀"
+        },
+        "aliases": {
+          "type": "object",
+          "properties": {
+            "add": {
+              "type": "array",
+              "items": {"type": "string"},
+              "default": ["addcd", "添加倒数日"],
+              "description": "添加命令的别名"
+            },
+            "list": {
+              "type": "array",
+              "items": {"type": "string"},
+              "default": ["listcd", "倒数日列表"],
+              "description": "列表命令的别名"
+            },
+            "delete": {
+              "type": "array",
+              "items": {"type": "string"},
+              "default": ["delcd", "删除倒数日"],
+              "description": "删除命令的别名"
+            }
+          },
+          "default": {},
+          "additionalProperties": false
+        }
+      },
+      "default": {},
+      "additionalProperties": false
+    },
+    "features": {
+      "type": "object",
+      "properties": {
+        "max_countdowns": {
+          "type": "integer",
+          "default": 50,
+          "minimum": 10,
+          "description": "每个用户最大倒数日数量"
+        },
+        "allow_group_usage": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否允许群聊使用"
+        }
+      },
+      "default": {},
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "default": {}
+}

@@ -1,42 +1,36 @@
 {
-  "title": "倒数日插件配置",
-  "description": "智能倒数日管理插件的配置选项",
-  "type": "object",
-  "properties": {
-    "admin_only": {
-      "type": "boolean",
-      "default": false,
-      "description": "是否只允许管理员添加/删除倒数日"
-    },
-    "max_countdowns": {
-      "type": "integer",
-      "default": 50,
-      "minimum": 1,
-      "maximum": 1000,
-      "description": "每个用户最大倒数日数量限制"
-    },
-    "enable_reminders": {
-      "type": "boolean",
-      "default": true,
-      "description": "是否启用倒数日提醒功能"
-    },
-    "reminder_days": {
-      "type": "array",
-      "items": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 365
-      },
-      "default": [7, 3, 1],
-      "description": "在倒数日剩余这些天数时发送提醒"
-    },
-    "reminder_message": {
-      "type": "string",
-      "default": "📢 提醒：距离「{name}」还有 {days} 天！",
-      "description": "提醒消息模板，支持 {name}, {days}, {date} 占位符"
-    }
+  "admin_only": {
+    "type": "boolean",
+    "default": false,
+    "description": "是否只允许管理员添加/删除倒数日"
   },
-  "required": ["admin_only", "max_countdowns", "enable_reminders", "reminder_days", "reminder_message"]
+  "max_countdowns": {
+    "type": "integer",
+    "default": 50,
+    "minimum": 1,
+    "maximum": 1000,
+    "description": "每个用户最大倒数日数量限制"
+  },
+  "enable_reminders": {
+    "type": "boolean",
+    "default": true,
+    "description": "是否启用倒数日提醒功能"
+  },
+  "reminder_days": {
+    "type": "array",
+    "items": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 365
+    },
+    "default": [7, 3, 1],
+    "description": "在倒数日剩余这些天数时发送提醒"
+  },
+  "reminder_message": {
+    "type": "string",
+    "default": "📢 提醒：距离「{name}」还有 {days} 天！",
+    "description": "提醒消息模板，支持 {name}, {days}, {date} 占位符"
+  }
 }
 
 

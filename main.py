@@ -11,7 +11,7 @@ from astrbot.api import logger
 from astrbot.api import AstrBotConfig
 
 
-@register("countdown", "开发者", "倒数日管理插件", "1.0.0", "https://github.com/your-repo")
+@register("countdown", "Kihana123", "倒数日管理插件", "1.0.1", "https://github.com/kihana2077/astrbot-plugin-countdown")
 class CountdownPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
@@ -276,7 +276,7 @@ class CountdownPlugin(Star):
                 
                 if days_left >= 0:  # 只显示未来的事件
                     icon = "🔔" if days_left <= cd["remind_days"] else "⏳"
-                    result += f"{icon} {cd['name']}: 剩余{days_left}天\n"
+                    result += f"{icon} {cd['name']}: 还有{days_left}天\n"
             
             yield event.plain_result(result.strip())
 

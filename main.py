@@ -11,7 +11,7 @@ from astrbot.api import logger
 from astrbot.api import AstrBotConfig
 
 
-@register("countdown", "Kihana123", "倒数日管理插件", "1.0.1", "https://github.com/kihana2077/astrbot-plugin-countdown")
+@register("countdown", "Kihana2077", "倒数日管理插件", "0.0.2", "https://github.com/kihana2077/astrbot-plugin-countdown")
 class CountdownPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)

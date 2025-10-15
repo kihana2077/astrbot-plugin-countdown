@@ -1,33 +1,33 @@
 {
     "admin_only": {
-      "type": "boolean",
+      "type": "bool",
       "default": false,
       "description": "是否只允许管理员使用插件命令"
     },
     "max_countdowns": {
-      "type": "integer",
+      "type": "int",
       "default": 50,
       "min": 10,
       "max": 1000,
       "description": "每个用户最大倒数日数量"
     },
     "enable_private_chat": {
-      "type": "boolean",
+      "type": "bool",
       "default": true,
       "description": "是否允许在私聊中使用插件"
     },
     "enable_group_chat": {
-      "type": "boolean",
+      "type": "bool",
       "default": true,
       "description": "是否允许在群聊中使用插件"
     },
     "show_operation_log": {
-      "type": "boolean",
+      "type": "bool",
       "default": true,
       "description": "是否显示操作日志"
     },
     "enable_reminders": {
-      "type": "boolean",
+      "type": "bool",
       "default": true,
       "description": "是否启用倒数日提醒功能"
     },

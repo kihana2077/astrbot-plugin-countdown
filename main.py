@@ -232,10 +232,11 @@ class CountdownPlugin(Star):
         
         if countdown:
             if countdown['days_left'] > 0:
-                yield event.plain_result(f"📅 距离「{name}」还有 {countdown['days_left']} 天")
-                yield event.plain_result(f"🗓️ 日期：{countdown['target_date']}")
+                response = f"📅 距离「{name}」还有 {countdown['days_left']} 天\n"
+                response += f"🗓️ 日期：{countdown['target_date']}"
                 if countdown['remark']:
-                    yield event.plain_result(f"📝 备注：{countdown['remark']}")
+                    response += f"\n📝 备注：{countdown['remark']}"
+                yield event.plain_result(response)
             else:
                 yield event.plain_result(f"🎉 「{name}」已经过去 {-countdown['days_left']} 天了！")
         else:
@@ -247,13 +248,14 @@ class CountdownPlugin(Star):
         countdown = self.find_countdown_by_name(user_key, name)
         
         if countdown:
-            yield event.plain_result(f"📅 「{name}」的日期是：{countdown['target_date']}")
+            response = f"📅 「{name}」的日期是：{countdown['target_date']}\n"
             if countdown['days_left'] > 0:
-                yield event.plain_result(f"⏳ 还有 {countdown['days_left']} 天")
+                response += f"⏳ 还有 {countdown['days_left']} 天"
             else:
-                yield event.plain_result(f"🎉 已经过去 {-countdown['days_left']} 天了！")
+                response += f"🎉 已经过去 {-countdown['days_left']} 天了！"
             if countdown['remark']:
-                yield event.plain_result(f"📝 备注：{countdown['remark']}")
+                response += f"\n📝 备注：{countdown['remark']}"
+            yield event.plain_result(response)
         else:
             yield event.plain_result(f"❓ 没有找到名为「{name}」的倒数日")
             yield event.plain_result("💡 使用「/添加倒数日 名称 日期」来创建")
@@ -444,6 +446,14 @@ class CountdownPlugin(Star):
     async def send_reminder(self, user_key: str, countdown: Dict, days_left: int):
         """发送提醒消息"""
         try:
+            # 解析用户ID和群ID
+            parts = user_key.split('_')
+            if len(parts) == 2:
+                user_id, group_id = parts
+            else:
+                user_id = parts[0]
+                group_id = ""
+            
             message_template = self.config.get("reminder_message", 
                 "📢 提醒：距离「{name}」还有 {days} 天！")
             
@@ -458,10 +468,17 @@ class CountdownPlugin(Star):
             if countdown['remark']:
                 chains.append(Comp.Plain(f"\n📝 {countdown['remark']}"))
             
-            # 注意：这里简化处理，实际应该根据user_key解析出用户ID
-            # 这里只是示例，实际使用时需要根据AstrBot的API进行调整
-            logger.info(f"应发送提醒给 {user_key}: {message}")
-            
+            # 发送消息到用户
+            try:
+                if group_id:
+                    # 如果是群聊，发送到群
+                    await self.ctx.send_message_to_group(group_id, chains)
+                else:
+                    # 如果是私聊，发送给用户
+                    await self.ctx.send_message_to_user(user_id, chains)
+            except Exception as e:
+                logger.error(f"发送提醒消息失败: {e}")
+                
         except Exception as e:
             logger.error(f"发送提醒失败: {e}")
 
@@ -469,3 +486,6 @@ class CountdownPlugin(Star):
         '''插件卸载时调用'''
         self.save_data()  # 保存数据
         logger.info("倒数日插件已卸载")
+
+
+

@@ -1,53 +1,43 @@
 {
-  "admin_only": {
-    "type": "bool",
-    "default": false,
-    "description": "是否只允许管理员使用插件命令"
-  },
-  "max_countdowns": {
-    "type": "int",
-    "default": 50,
-    "min": 10,
-    "max": 1000,
-    "description": "每个用户最大倒数日数量"
-  },
-  "enable_private_chat": {
-    "type": "bool",
-    "default": true,
-    "description": "是否允许在私聊中使用插件"
-  },
-  "enable_group_chat": {
-    "type": "bool",
-    "default": true,
-    "description": "是否允许在群聊中使用插件"
-  },
-  "show_operation_log": {
-    "type": "bool",
-    "default": true,
-    "description": "是否显示操作日志"
-  },
-  "enable_reminders": {
-    "type": "bool",
-    "default": true,
-    "description": "是否启用倒数日提醒功能"
-  },
-  "reminder_days": {
-    "type": "list",
-    "items": {
-      "type": "int",
-      "min": 0
+  "title": "倒数日插件配置",
+  "description": "智能倒数日管理插件的配置选项",
+  "type": "object",
+  "properties": {
+    "admin_only": {
+      "type": "boolean",
+      "default": false,
+      "description": "是否只允许管理员添加/删除倒数日"
     },
-    "default": [7, 3, 1, 0],
-    "description": "在倒数日前多少天发送提醒"
+    "max_countdowns": {
+      "type": "integer",
+      "default": 50,
+      "minimum": 1,
+      "maximum": 1000,
+      "description": "每个用户最大倒数日数量限制"
+    },
+    "enable_reminders": {
+      "type": "boolean",
+      "default": true,
+      "description": "是否启用倒数日提醒功能"
+    },
+    "reminder_days": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 365
+      },
+      "default": [7, 3, 1],
+      "description": "在倒数日剩余这些天数时发送提醒"
+    },
+    "reminder_message": {
+      "type": "string",
+      "default": "📢 提醒：距离「{name}」还有 {days} 天！",
+      "description": "提醒消息模板，支持 {name}, {days}, {date} 占位符"
+    }
   },
-  "reminder_message": {
-    "type": "string",
-    "default": "📢 提醒：距离「{name}」还有 {days} 天！",
-    "description": "提醒消息模板"
-  },
-  "error_message": {
-    "type": "string",
-    "default": "⚠️ 操作失败，请稍后重试。",
-    "description": "错误提示消息"
-  }
+  "required": ["admin_only", "max_countdowns", "enable_reminders", "reminder_days", "reminder_message"]
 }
+
+
+

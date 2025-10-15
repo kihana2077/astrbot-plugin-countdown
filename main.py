@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 import asyncio
 
-@register("countdown", "Kihana2077", "智能倒数日管理插件", "0.0.1", "https://github.com/kihana2077/astrbot-plugin-countdown#")
+@register("countdown", "Kihana2077", "智能倒数日管理插件", "0.0.1", "https://github.com/your-repo")
 class CountdownPlugin(Star):
     def __init__(self, context: Context, config: Dict):
         super().__init__(context)
@@ -25,7 +25,7 @@ class CountdownPlugin(Star):
     def init_db(self):
         """初始化数据库"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sql极速电竞APP下载ite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS countdowns (
@@ -181,22 +181,26 @@ class CountdownPlugin(Star):
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def handle_countdown_query(self, event: AstrMessageEvent):
         '''处理自然语言查询'''
-        message = event.message_str.lower().strip()
-        
-        # 匹配各种查询模式
-        patterns = [
-            (r'距离(.+)还有几天', self.handle_days_query),
-            (r'(.+)是什么时候', self.handle_date_query),
-            (r'倒数日帮助', self.show_help),
-            (r'帮助倒数日', self.show_help),
-        ]
-        
-        for pattern, handler in patterns:
-            match = re.search(pattern, message)
-            if match:
-                await handler(event, match.group(1))
-                event.stop_event()  # 阻止其他插件处理
-                return
+        try:
+            message = event.message_str.lower().strip()
+            
+            # 匹配各种查询模式
+            patterns = [
+                (r'距离(.+)还有几天', self.handle_days_query),
+                (r'(.+)是什么时候', self.handle_date_query),
+                (r'倒数日帮助', self.show_help),
+                (r'帮助倒数日', self.show_help),
+            ]
+            
+            for pattern, handler in patterns:
+                match = re.search(pattern, message)
+                if match:
+                    # 直接调用处理函数并传递 event 参数
+                    await handler(event, match.group(1))
+                    event.stop_event()  # 阻止其他插件处理
+                    return
+        except Exception as e:
+            logger.error(f"处理自然语言查询失败: {e}")
 
     async def handle_days_query(self, event: AstrMessageEvent, name: str):
         '''处理"距离XXX还有几天"的查询'''
